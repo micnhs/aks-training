@@ -1,0 +1,83 @@
+#aks-deploy.azcli
+az account set --subscription az-internal-nhs01
+
+REGION_NAME=westeurope
+RESOURCE_GROUP=rg-akscostsaving
+AKS_CLUSTER_NAME=akscostsaving-nhs01
+
+
+az group create \
+    --name $RESOURCE_GROUP \
+    --location $REGION_NAME
+
+VERSION=$(az aks get-versions \
+--location $REGION_NAME \
+--query 'orchestrators[?!isPreview] | [-1].orchestratorVersion' \
+--output tsv)
+
+az aks create \
+    --resource-group $RESOURCE_GROUP \
+    --name $AKS_CLUSTER_NAME \
+    --location $REGION_NAME \
+    --kubernetes-version $VERSION \
+    --node-count 2 \
+    --load-balancer-sku standard \
+    --vm-set-type VirtualMachineScaleSets \
+    --generate-ssh-keys
+
+az aks nodepool list --resource-group $RESOURCE_GROUP --cluster-name $AKS_CLUSTER_NAME
+    
+az aks nodepool add \
+    --resource-group $RESOURCE_GROUP \
+    --cluster-name $AKS_CLUSTER_NAME \
+    --name batchprocpl \
+    --node-count 2
+
+
+az aks nodepool list --resource-group $RESOURCE_GROUP --cluster-name $AKS_CLUSTER_NAME
+
+az aks nodepool scale \
+    --resource-group $RESOURCE_GROUP \
+    --cluster-name $AKS_CLUSTER_NAME \
+    --name batchprocpl \
+    --node-count 0
+
+# kontext für die Anmeldung an AKS API server erstellen
+az aks get-credentials \
+    --resource-group $RESOURCE_GROUP \
+    --name $AKS_CLUSTER_NAME
+
+kubectl get nodes
+
+#------------------------------------------------------- Spot nodepools
+
+# activate preview features
+az feature register --namespace "Microsoft.ContainerService" --name "spotpoolpreview"
+az feature list -o table --query "[?contains(name, 'Microsoft.ContainerService/spotpoolpreview')].{Name:name,State:properties.state}"
+az provider register --namespace Microsoft.ContainerService
+
+az extension add --name aks-preview
+az extension show --name aks-preview --query [version]
+
+
+#----------------------------
+az aks nodepool add \
+    --resource-group $RESOURCE_GROUP \
+    --cluster-name $AKS_CLUSTER_NAME \
+    --name spotpool01 \
+    --enable-cluster-autoscaler \
+    --max-count 3 \
+    --min-count 1 \
+    --priority Spot \
+    --eviction-policy Delete \
+    --spot-max-price -1 \
+    --no-wait
+
+az aks nodepool show \
+    --resource-group $RESOURCE_GROUP \
+    --cluster-name $AKS_CLUSTER_NAME \
+    --name spotpool01
+
+kubectl create namespace costsavings
+
+code spot-node-deployment.yaml
