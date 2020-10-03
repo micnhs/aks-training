@@ -1,0 +1,59 @@
+RESOURCE_GROUP=rg-contoso-video
+CLUSTER_NAME=aks-contoso-video
+az group create --name $RESOURCE_GROUP --location westeurope
+
+az aks create \
+    --resource-group $RESOURCE_GROUP \
+    --name $CLUSTER_NAME \
+    --node-count 2 \
+    --enable-addons http_application_routing \
+    --dns-name-prefix contoso-kubernetes-$RANDOM \
+    --generate-ssh-keys \
+    --node-vm-size Standard_B2s
+
+az aks get-credentials --name $CLUSTER_NAME --resource-group $RESOURCE_GROUP
+
+kubectl get nodes
+
+#create container registry
+ACR_NAME=acrContosoVideoNHS01
+echo $ACR_NAME
+
+az acr create \
+    --resource-group $RESOURCE_GROUP \
+    --name $ACR_NAME \
+    --sku Basic
+
+#register AKS cluster to acr
+az aks update \
+    --resource-group $RESOURCE_GROUP \
+    --name $CLUSTER_NAME \
+    --attach-acr $ACR_NAME
+
+cd ~/clouddrive
+git clone https://github.com/MicrosoftDocs/mslearn-aks-deploy-container-app.git
+cd mslearn-aks-deploy-container-app/
+
+az acr build \
+    --image contoso-website \
+    --registry $ACR_NAME \
+    --file Dockerfile .
+
+
+#apply manifest file to kubectl
+#manifest file must be uploaded to cloud shell!
+kubectl apply -f ./deployment.yaml
+kubectl get deploy contoso-website
+kubectl get pods
+
+#-------------------------CREATE SERVICE INTERNAL ------------------
+
+#apply service manifest to expose service 
+#manifest file must be uploaded to cloud shell before execution!
+kubectl apply -f ./service.yaml
+kubectl get service contoso-website
+
+
+#------------------------CREATE INGRESS -----------------------------
+# get DNS zone name and add it to ingress.yaml file 
+az network dns zone list --output table 
