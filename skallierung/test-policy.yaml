@@ -9,9 +9,10 @@ spec:
   - name: nginx
     image: nginx
     imagePullPolicy: IfNotPresent
-  tolerations:
-  - key: "kubernetes.azure.com/scalesetpriority"
-    operator: "Equal"
-    value: "spot"
-    effect: "NoSchedule"
-
+    resources:
+      requests:
+        cpu: 500m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 500Mi
